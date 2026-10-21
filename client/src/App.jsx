@@ -51,7 +51,7 @@ function App() {
   const [adminEmail, setAdminEmail] = useState("rituraj@gmail.com");
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminPage, setIsAdminPage] = useState(
-    () => window.location.pathname === "/admin"
+    () => window.location.pathname.endsWith("/admin")
   );
   const [adminTypes, setAdminTypes] = useState([]);
   const [adminUsers, setAdminUsers] = useState([]);
@@ -505,6 +505,7 @@ function App() {
           type.startsWith("Invoice CreditNotes") ||
           type === "Quotes" ||
           type === "Receive" ||
+          type === "Repeating Invoice" ||
           type === "Invoice Payment" ||
           type === "CreditNoteRefund Invoice",
       },
@@ -541,7 +542,7 @@ function App() {
       },
       {
         key: "Accounts",
-        match: (type) => type === "Chart of Accounts",
+        match: (type) => type === "Chart of Accounts" || type === "Tax Rates" ,
       },
       {
         key: "Tracking",
@@ -695,7 +696,7 @@ function App() {
 
   useEffect(() => {
     const updateFromPath = () => {
-      setIsAdminPage(window.location.pathname === "/admin");
+      setIsAdminPage(window.location.pathname.endsWith("/admin"));
     };
     updateFromPath();
     window.addEventListener("popstate", updateFromPath);
@@ -1747,7 +1748,7 @@ function App() {
       localStorage.setItem("xero_session", sessionFromRedirect);
       setSessionId(sessionFromRedirect);
       setStatus("Connected. Fetch tenants...");
-      window.history.replaceState({}, document.title, "/");
+      window.history.replaceState({}, document.title, "/xero-data-extraction/");
       return;
     }
     const code = params.get("code");
@@ -1766,7 +1767,7 @@ function App() {
           localStorage.setItem("xero_session", data.sessionId);
           setSessionId(data.sessionId);
           setStatus("Connected. Fetch tenants...");
-          window.history.replaceState({}, document.title, "/");
+          window.history.replaceState({}, document.title, "/xero-data-extraction/");
         } else {
           setStatus(data.error || "Auth failed");
         }
@@ -2220,6 +2221,18 @@ function App() {
             <span className="brand-dot" />
             <span>Command Center</span>
           </div>
+             <div className="brand-xero">
+            <a
+              href="https://3.236.240.156/xero-app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="xero-allocation-btn"
+            >
+              <span>Xero Allocation</span>
+               <span className="arrow">↗</span>
+            </a>
+          </div>
+
         </header>
 
         <section className="overview-strip" ref={overviewRef}>

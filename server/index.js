@@ -295,7 +295,7 @@ loadAdminSessions();
 
 const EXPORT_DIR = path.join(__dirname, "exports");
 const JOBS_FILE = path.join(EXPORT_DIR, "jobs.json");
-const EXPORT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const EXPORT_RETENTION_MS = 4 * 60 * 60 * 1000;
 const jobStore = new Map();
 const jobQueue = [];
 let activeJobs = 0;
@@ -388,6 +388,47 @@ function removeJobFiles(job) {
   });
 }
 
+
+
+function cleanupEmptyExportFolders() {
+  if (!fs.existsSync(EXPORT_DIR)) return;
+  const userFolders = fs.readdirSync(EXPORT_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory());
+
+  userFolders.forEach((userDir) => {
+    const userPath = path.join(EXPORT_DIR, userDir.name);
+    try {
+      const tenantFolders = fs.readdirSync(userPath, { withFileTypes: true })
+        .filter((d) => d.isDirectory());
+
+      tenantFolders.forEach((tenantDir) => {
+        const tenantPath = path.join(userPath, tenantDir.name);
+        try {
+          if (fs.readdirSync(tenantPath).length === 0) {
+            fs.rmdirSync(tenantPath);
+          }
+        } catch {
+          // ignore
+        }
+      });
+
+      if (fs.readdirSync(userPath).length === 0) {
+        fs.rmdirSync(userPath);
+      }
+    } catch {
+      // ignore
+    }
+  });
+}
+
+
+
+
+
+
+
+
+
 function pruneOldJobs() {
   const cutoff = Date.now() - EXPORT_RETENTION_MS;
   const toDelete = [];
@@ -402,6 +443,7 @@ function pruneOldJobs() {
   });
   if (toDelete.length) {
     saveJobs();
+    cleanupEmptyExportFolders();
   }
 }
 
@@ -445,7 +487,7 @@ async function processJob(job) {
 
     const wantExcel = job.format === "all" || job.format === "excel";
     const wantCsv = job.format === "all" || job.format === "csv";
-    const wantJson = job.format === "all" || job.format === "json";
+    const wantJson =  false
 
     let columns = null;
     let csvStream = null;
@@ -698,6 +740,12 @@ const typeConfigs = {
     unitdp: 4,
     paged: true,
   },
+"Repeating Invoice": {
+    path: "/RepeatingInvoices",
+    collectionKey: "RepeatingInvoices",
+    paged: true,
+    allowDateFilter: false,
+  },
   "Invoice AUTHORISED": {
     path: "/Invoices",
     collectionKey: "Invoices",
@@ -868,11 +916,13 @@ const typeConfigs = {
     path: "/Quotes",
     collectionKey: "Quotes",
     paged: true,
+    dateFilterMode: "query", 
   },
   "Purchase Orders": {
     path: "/PurchaseOrders",
     collectionKey: "PurchaseOrders",
     paged: true,
+    dateFilterMode: "query",
   },
   Prepayments: {
     path: "/Prepayments",
@@ -921,6 +971,12 @@ const typeConfigs = {
     paged: false,
     allowDateFilter: false,
   },
+ "Tax Rates": {
+    path: "/TaxRates",
+    collectionKey: "TaxRates",
+    paged: false,
+    allowDateFilter: false,
+  },
 };
 
 function createCodeVerifier() {
@@ -950,7 +1006,207 @@ function getSession(sessionId) {
     throw new Error("Session not found. Please connect again.");
   }
   return session;
+
 }
+
+
+function parseXeroDate(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === 0 ||
+    value === "0"
+  ) {
+    return "";
+  }
+
+  const match = String(value).match(/\/Date\((\d+)(?:[+-]\d+)?\)\//);
+
+  if (match) {
+    const timestamp = Number(match[1]);
+    const date = new Date(timestamp);
+
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+
+    return "";
+  }
+
+  // Normal date
+  const date = new Date(value);
+
+  if (isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date;
+}
+
+function mapRepeatingInvoiceRows(records) {
+  return records.flatMap((invoice) => {
+    const contact = invoice.Contact || {};
+    const lineItems = invoice.LineItems || [];
+    const schedule = invoice.Schedule || {};
+
+    console.log("contact11", contact);
+    console.log("lineItems11", lineItems);
+    console.log("schedule11", schedule);
+
+
+
+    const poAddress =
+      contact.Addresses?.find(
+        (a) => a.AddressType === "POBOX"
+      ) || {};
+
+
+
+    const invoiceDate = parseXeroDate(
+      schedule.NextScheduledDateString
+    );
+
+
+
+    const dueDate = parseXeroDate(
+      schedule.StartDate
+    );
+
+
+    const baseData = {
+
+
+      ContactName:
+        contact.Name || "",
+
+      EmailAddress:
+        contact.EmailAddress || "",
+
+
+
+      POAddressLine1:
+        poAddress.AddressLine1 || "",
+
+      POAddressLine2:
+        poAddress.AddressLine2 || "",
+
+      POAddressLine3:
+        poAddress.AddressLine3 || "",
+
+      POAddressLine4:
+        poAddress.AddressLine4 || "",
+
+      POCity:
+        poAddress.City || "",
+
+      PORegion:
+        poAddress.Region || "",
+
+      POPostalCode:
+        poAddress.PostalCode || "",
+
+      POCountry:
+        poAddress.Country || "",
+
+
+      InvoiceNumber:
+        invoice.InvoiceNumber ||
+        invoice.RepeatingInvoiceID ||
+        "",
+
+      Reference:
+        invoice.Reference || "",
+
+      InvoiceDate:
+        invoiceDate,
+
+      DueDate:
+        dueDate,
+
+
+
+      Currency:
+        invoice.CurrencyCode || "",
+
+
+      BrandingTheme:
+        invoice.BrandingThemeID || "",
+    };
+
+
+
+
+    if (lineItems.length > 0) {
+      console.log(
+        "Invoice:",
+        invoice.RepeatingInvoiceID,
+        "Line Items:",
+        lineItems.length
+      );
+
+      return lineItems.map((line) => {
+        const classTracking = line.Tracking?.find(
+          (tracking) =>
+            tracking.Name?.trim().toLowerCase() === "class"
+        );
+
+        const locationTracking = line.Tracking?.find(
+          (tracking) =>
+            tracking.Name?.trim().toLowerCase() === "location"
+        );
+
+        return {
+          ...baseData,
+
+          InventoryItemCode: line.ItemCode || "",
+          Description: line.Description || "",
+          Quantity: line.Quantity ?? "",
+          UnitAmount: line.UnitAmount ?? "",
+
+          Discount:
+            line.DiscountRate ??
+            line.Discount ??
+            "",
+
+          AccountCode: line.AccountCode || "",
+          TaxType: line.TaxType || "",
+
+          // CLASS
+          TrackingName1: classTracking ? "Class" : "",
+          TrackingOption1: classTracking?.Option || "",
+
+          // LOCATION
+          TrackingName2: locationTracking ? "Location" : "",
+          TrackingOption2: locationTracking?.Option || "",
+        };
+      });
+    }
+
+
+
+    return [
+      {
+        ...baseData,
+
+        InventoryItemCode: "",
+        Description: "",
+        Quantity: "",
+        UnitAmount: "",
+        Discount: "",
+        AccountCode: "",
+        TaxType: "",
+
+        TrackingName1: "",
+        TrackingOption1: "",
+        TrackingName2: "",
+        TrackingOption2: "",
+      },
+    ];
+  });
+}
+
+
 
 app.post("/api/user/signup", (req, res) => {
   try {
@@ -1187,37 +1443,56 @@ app.post("/api/admin/exports/clear-all", (req, res) => {
     return res.status(401).json({ error: "Invalid admin session" });
   }
 
-  let removedFiles = 0;
-  jobStore.forEach((job) => {
-    if (job?.files) {
-      Object.values(job.files).forEach((file) => {
-        if (file?.path && fs.existsSync(file.path)) {
-          try {
-            fs.unlinkSync(file.path);
-            removedFiles += 1;
-          } catch {
-            // ignore delete errors
+  try {
+    let removedFiles = 0;
+
+    // Step 1: jobStore ki tracked files delete karo
+    jobStore.forEach((job) => {
+      if (job?.files) {
+        Object.values(job.files).forEach((file) => {
+          if (file?.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+              removedFiles += 1;
+            } catch (err) {
+              console.error(`Could not delete ${file.path}:`, err.message);
+            }
           }
-        }
-      });
-    }
-  });
+        });
+      }
+    });
 
-  jobStore.clear();
-  jobQueue.length = 0;
-  activeJobs = 0;
-  saveJobs();
+    // Step 2: in-memory job state clear karo
+    jobStore.clear();
+    jobQueue.length = 0;
+    activeJobs = 0;
+    activeJobsByUser.clear();
+    saveJobs();
 
-  if (fs.existsSync(EXPORT_DIR)) {
-    try {
-      fs.rmSync(EXPORT_DIR, { recursive: true, force: true });
-    } catch {
-      // ignore delete errors
+    // Step 3: poori exports directory (jitna bhi data ho) force delete karo
+    if (fs.existsSync(EXPORT_DIR)) {
+      fs.rmSync(EXPORT_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
+
+    // Step 4: khaali folder wapas bana do
+    ensureExportDir();
+
+    // Step 5: confirm karo ki sach me sab kuch khaali ho gaya
+    const remaining = fs.existsSync(EXPORT_DIR) ? fs.readdirSync(EXPORT_DIR) : [];
+    const fullyCleared = remaining.length === 0 || (remaining.length === 1 && remaining[0] === "jobs.json");
+
+    return res.json({
+      ok: true,
+      removedFiles,
+      fullyCleared,
+      remainingItems: remaining,
+    });
+  } catch (err) {
+    console.error("Clear all exports failed:", err);
+    return res.status(500).json({ error: err.message });
   }
-
-  return res.json({ ok: true, removedFiles });
 });
+
 
 function buildDateKey(value) {
   const date = new Date(value);
@@ -1608,7 +1883,7 @@ async function forceRefreshSession(session) {
 
 function buildWhere(fromDate, toDate, config) {
   const clauses = [];
-  if (config.allowDateFilter !== false) {
+  if (config.allowDateFilter !== false  && config.dateFilterMode !== "query") {
     if (fromDate) {
       const [fy, fm, fd] = fromDate.split("-");
       clauses.push(`Date >= DateTime(${fy},${fm},${fd})`);
@@ -1765,6 +2040,7 @@ function mapTransferRows(records) {
     ToBankAccName: item.ToBankAccount?.Name || "",
     Amount: item.Amount ?? "",
     CurrencyRate: item.CurrencyRate ?? "",
+    Reference: item?.Reference ?? "",
   }));
 }
 
@@ -2136,6 +2412,47 @@ function mapTrackingCategoryRows(records) {
   return rows;
 }
 
+
+function mapTaxRateRows(records) {
+  const rows = [];
+  records.forEach((tax) => {
+    const base = {
+      Name: tax.Name || "",
+      TaxType: tax.TaxType || "",
+      ReportTaxType: tax.ReportTaxType || "",
+      Status: tax.Status || "",
+      DisplayTaxRate: tax.DisplayTaxRate ?? "",
+      EffectiveRate: tax.EffectiveRate ?? "",
+      CanApplyToAssets: tax.CanApplyToAssets ?? "",
+      CanApplyToEquity: tax.CanApplyToEquity ?? "",
+      CanApplyToExpenses: tax.CanApplyToExpenses ?? "",
+      CanApplyToLiabilities: tax.CanApplyToLiabilities ?? "",
+      CanApplyToRevenue: tax.CanApplyToRevenue ?? "",
+    };
+    const components = Array.isArray(tax.TaxComponents) ? tax.TaxComponents : [];
+    if (!components.length) {
+      rows.push({
+        ...base,
+        ComponentName: "",
+        ComponentRate: "",
+        IsCompound: "",
+        IsNonRecoverable: "",
+      });
+      return;
+    }
+    components.forEach((component) => {
+      rows.push({
+        ...base,
+        ComponentName: component.Name || "",
+        ComponentRate: component.Rate ?? "",
+        IsCompound: component.IsCompound ?? "",
+        IsNonRecoverable: component.IsNonRecoverable ?? "",
+      });
+    });
+  });
+  return rows;
+}
+
 function mapCreditNoteRows(records, { includeReference, includeDiscount, includeId }) {
   const rows = [];
   records.forEach((credit) => {
@@ -2331,18 +2648,26 @@ function mapOverpaymentRefundRows(records) {
 }
 
 function mapOverpaymentPaymentRows(records) {
-  return records.map((payment) => ({
-    Date: formatXeroDate(payment.Date, payment.DateString),
-    Amount: payment.Amount ?? "",
-    AccountCode: payment.Account?.Code || "",
-    Reference: payment.Reference || "",
-    CurrencyRate: payment.CurrencyRate ?? "",
-    ContactName:
-      payment.Contact?.Name ||
-      payment.Invoice?.Contact?.Name ||
-      payment.Overpayment?.Contact?.Name ||
-      "",
-  }));
+  return records.map((payment) => {
+
+    return {
+      PaymentID: payment.PaymentID || "",
+      Date: formatXeroDate(payment.Date, payment.DateString),
+      BankAmount: payment.BankAmount ?? "",
+      Amount: payment.Amount ?? "",
+      CurrencyRate: payment.CurrencyRate ?? "",
+      PaymentType: payment.PaymentType || "",
+      Status: payment.Status === "DELETED" ? "" : (payment.Status || ""),
+      IsReconciled: payment.IsReconciled ?? "",
+      AccountID: payment.Account?.AccountID || "",
+      Code: payment.Account?.Code || "",
+      PaymentCurrncyCode: payment.Account?.CurrencyCode || "",
+      Name: payment?.Invoice?.Contact?.Name || "",
+      InvoiceCurrncyCode: payment?.Invoice?.CurrencyCode || "",
+      InvoiceID: payment.Invoice?.InvoiceID || "",
+      Reference: payment.Reference || "",
+    };
+  });
 }
 
 function mapManualJournalRows(records) {
@@ -2450,6 +2775,7 @@ function mapContactRows(records) {
     const person = (index) => contactPersons[index] || {};
 
     return {
+      ContactID: contact.ContactID || "",
       ContactName: contact.Name || "",
       AccountNumber: contact.AccountNumber || "",
       EmailAddress: contact.EmailAddress || "",
@@ -2585,8 +2911,47 @@ const exportTemplates = {
       "TrackingOption2",
       "Currency",
       "CurrencyRate",
+      "InvoiceID",
     ],
-    mapRows: (records) => mapInvoiceRows(records, { includeInvoiceId: false }),
+    mapRows: (records) => mapInvoiceRows(records, { includeInvoiceId: true }),
+  }, 
+   "Repeating Invoice": {
+    columns: [
+      "ContactName",
+      "EmailAddress",
+
+      "POAddressLine1",
+      "POAddressLine2",
+      "POAddressLine3",
+      "POAddressLine4",
+      "POCity",
+      "PORegion",
+      "POPostalCode",
+      "POCountry",
+
+      "InvoiceNumber",
+      "Reference",
+      "InvoiceDate",
+      "DueDate",
+
+      "InventoryItemCode",
+      "Description",
+      "Quantity",
+      "UnitAmount",
+      "Discount",
+      "AccountCode",
+      "TaxType",
+
+      "TrackingName1",
+      "TrackingOption1",
+      "TrackingName2",
+      "TrackingOption2",
+
+      "Currency",
+      "BrandingTheme",
+    ],
+
+    mapRows: (records) => mapRepeatingInvoiceRows(records),
   },
   "Invoice DRAFT": {
     columns: [
@@ -2615,8 +2980,9 @@ const exportTemplates = {
       "TrackingOption2",
       "Currency",
       "CurrencyRate",
+      "InvoiceID"
     ],
-    mapRows: (records) => mapInvoiceRows(records, { includeInvoiceId: false }),
+    mapRows: (records) => mapInvoiceRows(records, { includeInvoiceId: true }),
   },
   "Bill PAID": {
     columns: [
@@ -2701,8 +3067,9 @@ const exportTemplates = {
       "TrackingOption2",
       "Currency",
       "CurrencyRate",
+      "InvoiceID"
     ],
-    mapRows: (records) => mapBillRows(records, { includeInvoiceId: false }),
+    mapRows: (records) => mapBillRows(records, { includeInvoiceId: true }),
   },
   "Invoice CreditNotes AUTHORISED": {
     columns: [
@@ -2730,12 +3097,13 @@ const exportTemplates = {
       "TrackingOption2",
       "Currency",
       "CurrencyRate",
+      "Id",
     ],
     mapRows: (records) =>
       mapCreditNoteRows(records, {
         includeReference: true,
         includeDiscount: true,
-        includeId: false,
+        includeId: true,
       }),
   },
   "Invoice CreditNotes PAID": {
@@ -2764,12 +3132,13 @@ const exportTemplates = {
       "TrackingOption2",
       "Currency",
       "CurrencyRate",
+      "Id",
     ],
     mapRows: (records) =>
       mapCreditNoteRows(records, {
         includeReference: true,
         includeDiscount: true,
-        includeId: false,
+        includeId: true,
       }),
   },
   "Supplier CreditNotes AUTHORISED": {
@@ -2896,6 +3265,7 @@ const exportTemplates = {
       "ToBankAccName",
       "Amount",
       "CurrencyRate",
+      "Reference"
     ],
     mapRows: (records) => mapTransferRows(records),
   },
@@ -2957,9 +3327,10 @@ const exportTemplates = {
       "AccountCode",
       "Reference",
       "CurrencyRate",
+      "Invoice_ID"
     ],
     mapRows: (records) =>
-      mapPaymentRows(records, { includeContact: false, includeInvoiceId: false }).map(
+      mapPaymentRows(records, { includeContact: false, includeInvoiceId: true }).map(
         (row) => ({
           Date: row.Date,
           InvoiceNumber: row.InvoiceNumber,
@@ -2978,9 +3349,10 @@ const exportTemplates = {
       "AccountCode",
       "Reference",
       "CurrencyRate",
+      "Bill_ID"
     ],
     mapRows: (records) =>
-      mapPaymentRows(records, { includeContact: false, includeInvoiceId: false }).map(
+      mapPaymentRows(records, { includeContact: false, includeInvoiceId: true }).map(
         (row) => ({
           Date: row.Date,
           InvoiceNumber: row.InvoiceNumber,
@@ -2991,28 +3363,52 @@ const exportTemplates = {
         })
       ),
   },
+  
   "Overpayment Refund AP": {
     columns: [
+      "PaymentID",
       "Date",
+      "BankAmount",
       "Amount",
-      "AccountCode",
-      "Reference",
       "CurrencyRate",
-      "ContactName",
+      "PaymentType",
+      "Status",
+      "IsReconciled",
+      "AccountID",
+      "Code",
+      "PaymentCurrncyCode",
+      "Name",
+      "InvoiceCurrncyCode",
+      "Type",
+      "InvoiceID",
+      "Reference",
     ],
-    mapRows: (records) => mapOverpaymentPaymentRows(records),
+    mapRows: (records) => mapOverpaymentPaymentRows(records, "AP"),
   },
+
   "Overpayment Refund AR": {
     columns: [
+      "PaymentID",
       "Date",
+      "BankAmount",
       "Amount",
-      "AccountCode",
-      "Reference",
       "CurrencyRate",
-      "ContactName",
+      "PaymentType",
+      "Status",
+      "IsReconciled",
+      "AccountID",
+      "Code",
+      "PaymentCurrncyCode",
+      "Name",
+      "InvoiceCurrncyCode",
+      "Type",
+      "InvoiceID",
+      "Reference",
     ],
-    mapRows: (records) => mapOverpaymentPaymentRows(records),
+    mapRows: (records) => mapOverpaymentPaymentRows(records, "AR"),
   },
+
+
   "Overpayment Refunds": {
     columns: [
       "Date",
@@ -3312,8 +3708,31 @@ const exportTemplates = {
     ],
     mapRows: (records) => mapTrackingCategoryRows(records),
   },
+
+ "Tax Rates": {
+    columns: [
+      "Name",
+      "TaxType",
+      "ReportTaxType",
+      "Status",
+      "DisplayTaxRate",
+      "EffectiveRate",
+      "CanApplyToAssets",
+      "CanApplyToEquity",
+      "CanApplyToExpenses",
+      "CanApplyToLiabilities",
+      "CanApplyToRevenue",
+      "ComponentName",
+      "ComponentRate",
+      "IsCompound",
+      "IsNonRecoverable",
+    ],
+    mapRows: (records) => mapTaxRateRows(records),
+  },
+
   Contacts: {
     columns: [
+      "ContactID",
       "ContactName",
       "AccountNumber",
       "EmailAddress",
@@ -3396,6 +3815,11 @@ pruneOldJobs();
 processQueue();
 
 
+setInterval(() => {
+  pruneOldJobs();
+}, 60 * 1000); 
+
+
 function buildRawHeader(raw, collectionKey) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return null;
@@ -3432,6 +3856,13 @@ async function fetchPagedRecords({
   if (where) {
     baseUrl.searchParams.set("where", where);
   }
+
+
+   if (config.dateFilterMode === "query") {
+    if (from) baseUrl.searchParams.set("DateFrom", from);
+    if (to) baseUrl.searchParams.set("DateTo", to);
+  }
+  
 
   let count = 0;
   let lastRate = null;

@@ -1,10 +1,11 @@
 {
-  "maxUsers": 7,
-  "adminPasswordHash": "fQNcFvV7qdXs26sctvAehf11V9ChL856yeOt8jscV6s/7bNSv14OtJTCPVPMbD4WzYuo0GSLHXp1GAerV2HmnA==",
-  "adminPasswordSalt": "3e1164d7600ef2233e7dd4e32daffa1f",
+  "maxUsers": 20,
+  "adminPasswordHash": "LDn7zxdNnDE0wkuwLNUKhemkniFZHZhs4YT8a1CP3Mu9lVrfOZoOnCcLhqDn49AVp7Bx6BViunULDF7iPalBNw==",
+  "adminPasswordSalt": "e53868f1e5e11c069604ccf357d1f7cf",
   "allowedTypes": [
     "Invoice PAID",
     "Invoice AUTHORISED",
+    "Repeating Invoice",
     "Invoice DRAFT",
     "Bill PAID",
     "Bill AUTHORISED",
@@ -35,7 +36,8 @@
     "Contacts",
     "Inventory",
     "Items",
-    "Chart of Accounts"
+    "Chart of Accounts",
+    "Tax Rates"
   ],
   "deniedTypes": []
 }

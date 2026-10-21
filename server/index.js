@@ -1063,15 +1063,23 @@ function mapRepeatingInvoiceRows(records) {
 
 
 
-    const invoiceDate = parseXeroDate(
-      schedule.NextScheduledDateString
-    );
+    // const invoiceDate = parseXeroDate(
+    //   schedule.NextScheduledDateString
+    // ); 
+
+    const invoiceDate = formatXeroDate(
+  schedule.NextScheduledDateString
+);
 
 
 
-    const dueDate = parseXeroDate(
-      schedule.StartDate
-    );
+    // const dueDate = parseXeroDate(
+    //   schedule.StartDate
+    // ); 
+
+    const dueDate = formatXeroDate(
+  schedule.StartDate
+);
 
 
     const baseData = {
@@ -1988,7 +1996,7 @@ function formatXeroDate(rawValue, stringValue) {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    return `${d}/${m}/${y}`;
   };
   if (typeof candidate === "string") {
     const trimmed = candidate.trim();
@@ -2000,7 +2008,7 @@ function formatXeroDate(rawValue, stringValue) {
       }
     }
     if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-      return trimmed.slice(0, 10);
+      return 	${iso[3]}/${iso[2]}/${iso[1]};
     }
     const parsed = new Date(trimmed);
     if (!Number.isNaN(parsed.getTime())) {
@@ -2035,7 +2043,7 @@ function expandLineItems(record) {
 function mapTransferRows(records) {
   return records.map((item) => ({
     BankTransferID: item.BankTransferID || "",
-    Date: item.DateString || item.Date || "",
+    Date: formatXeroDate(item.Date, item.DateString),
     FromBankAccName: item.FromBankAccount?.Name || "",
     ToBankAccName: item.ToBankAccount?.Name || "",
     Amount: item.Amount ?? "",

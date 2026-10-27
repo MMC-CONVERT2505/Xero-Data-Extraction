@@ -2015,7 +2015,7 @@ function formatXeroDate(rawValue, stringValue) {
       }
     }
     if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-      return 	${iso[3]}/${iso[2]}/${iso[1]};
+     return `${iso[3]}/${iso[2]}/${iso[1]}`;
     }
     const parsed = new Date(trimmed);
     if (!Number.isNaN(parsed.getTime())) {
@@ -2891,19 +2891,6 @@ function mapContactRows(records) {
 } 
 
 
-"Invoice Notes": {
-  columns: [
-    "InvoiceNumber",
-    "ContactName",
-    "Status",
-    "NoteDate",
-    "User",
-    "Note",
-    "InvoiceID",
-  ],
-  mapRows: (records) => mapInvoiceNoteRows(records),
-}
-
 const exportTemplates = {
   "Invoice PAID": {
     columns: [
@@ -3036,6 +3023,18 @@ const exportTemplates = {
     ],
     mapRows: (records) => mapInvoiceRows(records, { includeInvoiceId: true }),
   },
+  "Invoice Notes": {
+  columns: [
+    "InvoiceNumber",
+    "ContactName",
+    "Status",
+    "NoteDate",
+    "User",
+    "Note",
+    "InvoiceID",
+  ],
+  mapRows: (records) => mapInvoiceNoteRows(records),
+},
   "Bill PAID": {
     columns: [
       "ContactName",

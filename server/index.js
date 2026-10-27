@@ -641,7 +641,7 @@ async function processJob(job) {
     job.count = result.count || 0;
     job.rate = result.rate || {};
 
-    if (!job.count) {
+    if (!job.count || !Object.keys(files).length) {
       if (csvStream) {
         await new Promise((resolve) => csvStream.end(resolve));
       }
@@ -762,6 +762,13 @@ const typeConfigs = {
     unitdp: 4,
     paged: true,
   },
+  "Invoice Notes": {
+  path: "/Invoices",
+  collectionKey: "Invoices",
+  type: "ACCREC",
+  paged: true,
+  fetchHistory: true,
+},
   "Bill PAID": {
     path: "/Invoices",
     collectionKey: "Invoices",
@@ -2134,6 +2141,29 @@ function mapInvoiceRows(records, { includeInvoiceId }) {
     });
   });
   return rows;
+} 
+
+function mapInvoiceNoteRows(records) {
+  const rows = [];
+  records.forEach((invoice) => {
+    const history = Array.isArray(invoice.HistoryRecords)
+      ? invoice.HistoryRecords
+      : [];
+    history
+      .filter((entry) => entry.Changes === "Note")
+      .forEach((entry) => {
+        rows.push({
+          InvoiceNumber: invoice.InvoiceNumber || "",
+          ContactName: invoice.Contact?.Name || "",
+          Status: invoice.Status || "",
+          NoteDate: formatXeroDate(entry.DateUTC, entry.DateUTCString),
+          User: entry.User || "",
+          Note: entry.Details || "",
+          InvoiceID: invoice.InvoiceID || "",
+        });
+      });
+  });
+  return rows;
 }
 
 function mapBillRows(records, { includeInvoiceId }) {
@@ -2858,6 +2888,20 @@ function mapContactRows(records) {
       APOverdue: ap.Overdue ?? "",
     };
   });
+} 
+
+
+"Invoice Notes": {
+  columns: [
+    "InvoiceNumber",
+    "ContactName",
+    "Status",
+    "NoteDate",
+    "User",
+    "Note",
+    "InvoiceID",
+  ],
+  mapRows: (records) => mapInvoiceNoteRows(records),
 }
 
 const exportTemplates = {
@@ -3736,7 +3780,8 @@ const exportTemplates = {
       "IsNonRecoverable",
     ],
     mapRows: (records) => mapTaxRateRows(records),
-  },
+  }, 
+
 
   Contacts: {
     columns: [
@@ -3840,6 +3885,16 @@ function buildRawHeader(raw, collectionKey) {
     ([key, value]) => `${JSON.stringify(key)}:${JSON.stringify(value)}`
   );
   return `{${parts.join(",")},${JSON.stringify(collectionKey)}:[`;
+} 
+
+async function attachInvoiceHistory(records, fetchWithAuthRetry) {
+  for (const invoice of records) {
+    if (!invoice.InvoiceID) continue;
+    const url = `https://api.xero.com/api.xro/2.0/Invoices/${invoice.InvoiceID}/History`;
+    const payload = await fetchWithAuthRetry(url);
+    invoice.HistoryRecords = payload.data?.HistoryRecords || [];
+    await delay(1100);
+  }
 }
 
 async function fetchPagedRecords({
@@ -3917,6 +3972,9 @@ async function fetchPagedRecords({
         previousPageSignature = signature;
       }
       if (!records.length) break;
+if (config.fetchHistory) {                                  // ← naya
+  await attachInvoiceHistory(records, fetchWithAuthRetry);  // ← naya
+}  
       if (onPage) {
         await onPage(records, payload.data, {
           page,

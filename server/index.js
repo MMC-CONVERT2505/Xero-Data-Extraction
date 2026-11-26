@@ -769,6 +769,13 @@ const typeConfigs = {
   paged: true,
   fetchHistory: true,
 },
+  "Bill Notes": {
+    path: "/Invoices",
+    collectionKey: "Invoices",
+    type: "ACCPAY",          // status nahi diya, to saare statuses aayenge
+    paged: true,
+    fetchHistory: true,
+  },
   "Bill PAID": {
     path: "/Invoices",
     collectionKey: "Invoices",
@@ -2167,6 +2174,30 @@ function mapInvoiceNoteRows(records) {
   return rows;
 }
 
+function mapBillNoteRows(records) {
+  const rows = [];
+  records.forEach((bill) => {
+    const history = Array.isArray(bill.HistoryRecords)
+      ? bill.HistoryRecords
+      : [];
+    history
+      .filter((entry) => entry.Changes === "Note")
+      .forEach((entry) => {
+        rows.push({
+          BillNumber: bill.InvoiceNumber || "",
+          Reference: bill.Reference || "",
+          ContactName: bill.Contact?.Name || "",
+          Status: bill.Status || "",
+          NoteDate: formatXeroDate(entry.DateUTC, entry.DateUTCString),
+          User: entry.User || "",
+          Note: entry.Details || "",
+          BillID: bill.InvoiceID || "",
+        });
+      });
+  });
+  return rows;
+}
+
 function mapBillRows(records, { includeInvoiceId }) {
   const rows = [];
   records.forEach((invoice) => {
@@ -3036,6 +3067,19 @@ const exportTemplates = {
   ],
   mapRows: (records) => mapInvoiceNoteRows(records),
 },
+  "Bill Notes": {
+    columns: [
+      "BillNumber",
+      "Reference",
+      "ContactName",
+      "Status",
+      "NoteDate",
+      "User",
+      "Note",
+      "BillID",
+    ],
+    mapRows: (records) => mapBillNoteRows(records),
+  },
   "Bill PAID": {
     columns: [
       "ContactName",

@@ -11,6 +11,7 @@
     "Bill PAID",
     "Bill AUTHORISED",
     "Bill DRAFT",
+    "Bill Notes",
     "Invoice CreditNotes AUTHORISED",
     "Invoice CreditNotes PAID",
     "Supplier CreditNotes AUTHORISED",
